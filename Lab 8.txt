@@ -1,0 +1,248 @@
+Lab 8
+const fs = require('fs');   
+const http = require('http');
+const {URL} = require('url'); 
+
+//Helper Functions
+function loadInitializeList(file, cb){
+    fs.readFile(file,{"encoding":"utf-8"},(err, jsonList)=>{
+        console.log(jsonList);
+        if (err){ //file does not exist
+            cb([]);
+        }else{
+            let list = JSON.parse(jsonList);
+            cb(list);
+        }
+    });
+}
+function storeList (file, list){
+    fs.writeFile(file, JSON.stringify(list), (err)=>{
+        if (err){
+            console.log('Error Writing the file');
+        }else{
+            console.log('File Saved succesfully'); 
+        }
+    });
+}
+
+// Create folders for the to-do list and shopping list
+//Folders can be created Synchronously or Asynchronously
+const todoDir = './todo';
+const shopDir = './shop';
+fs.readdir(todoDir,(err,content1)=>{
+    if (err){
+        fs.mkdir(todoDir, (err)=>{
+            if (err) throw err;
+        });
+    }
+});
+fs.readdir(shopDir ,(err,content2)=>{
+    if (err){
+        fs.mkdir(shopDir, (err)=>{
+            if (err) throw err;
+        });
+    }
+});
+//JSON Files variables
+const todoFile = './todo/todo.json';
+const shopFile = './shop/shop.json';
+
+//************ HANDLERS
+//POST Handler
+const POSTHandler = (file, newItem, cb)=>{
+    loadInitializeList(file,(list)=>{
+        console.log(list);
+        list.push(newItem);
+        storeList(file, list);
+        cb(200, 'OK\n');
+    });
+}
+//DELETE Handler
+const DELETEHandler = (file, i, cb)=>{
+    loadInitializeList(file, (list)=>{
+        if (i >= list.length){
+            cb(404,'NOT FOUND');
+        }else{
+            list.splice(i,1);
+            storeList(file,list);
+            cb(200,'OK');
+        }
+    });
+}
+//PUT Handler
+const PUTHandler = (file, i, qs, cb)=>{
+    loadInitializeList(file, (list)=>{
+        if (i >= list.length){
+            cb(404,'NOT FOUND');
+        }else{
+            for (let key in qs){
+                console.log(key);
+                list[i][key] = qs[key];
+                console.log(list[i]);
+            }
+            storeList(file,list);
+             cb(200,'OK');
+        }
+
+    });
+}
+
+//Request Handler
+const requestHandler = (req,res)=>{
+    //Parsing the req.url using the new API
+    const baseURL = 'http://'+ req.headers.host + '/';
+    const {pathname, searchParams} = new URL(req.url, baseURL); 
+    
+    //Extracting the path and index from pathname
+    const endpoint = pathname.split('/');
+    const path = endpoint[1];
+    const index = parseInt(endpoint[2], 10);
+    
+    //Converting the searchParams object to a native JS object
+    let entries = searchParams.entries();
+    const query = Object.fromEntries(entries); 
+
+    //Extract the request method
+    const method =  req.method.toUpperCase();
+
+    //Routing logic
+    switch(method){
+        case 'POST':if (path === 'shop'){
+                    POSTHandler (shopFile,query,(statusCode,response)=>{
+                        res.setHeader('content-type','text/plain; charset="utf-8"');
+                        res.writeHeader(statusCode)
+                        res.end(response); 
+                    } );  
+                    }else if (path === 'todo'){
+                        POSTHandler (todoFile,query,(statusCode,response)=>{
+                            res.setHeader('content-type','text/plain; charset="utf-8"');
+                            res.writeHeader(statusCode)
+                            res.end(response); 
+                        } );                     
+                    }else{ //invalid path
+                        res.setHeader('content-type','text/plain; charset="utf-8"');
+                        res.writeHeader(400)
+                        res.end('BAD REQUEST');
+                    }
+            break;
+        case 'GET':if (path === 'shop'){
+                    res.setHeader('content-type','application/json');
+                    res.statusCode = 200;
+                    let stream = fs.createReadStream(shopFile);
+                    stream.pipe(res);
+                    stream.on('error', function(err){
+                        if (err.code === 'ENOENT'){
+                            res.statusCode = 404;
+                            res.end('NOT FOUND');
+                        }else{
+                            res.statusCode = 500;
+                            res.end('Internal Server Error');
+                        }
+                      });
+                                     
+        }else if (path === 'todo'){
+                    res.setHeader('content-type','application/json');
+                    res.statusCode = 200;
+                    let stream = fs.createReadStream(todoFile);
+                    stream.pipe(res);
+                    stream.on('error', function(err){
+                        if (err.code === 'ENOENT'){
+                            res.statusCode = 404;
+                            res.end('Not Found');
+                        }else{
+                            res.statusCode = 500;
+                            res.end('Internal Server Error');
+                        }
+                      });
+        }else{ //invalid path
+            res.setHeader('content-type','text/plain; charset="utf-8"');
+            res.writeHeader(400)
+            res.end('BAD REQUEST');
+            }
+            break;
+        case 'DELETE':if (path === 'shop'){
+                        DELETEHandler(shopFile, index, (statusCode, response)=>{
+                            res.setHeader('content-type','text/plain; charset="utf-8"');
+                            res.writeHeader(statusCode)
+                            res.end(response);
+                        });
+                    }else if (path === 'todo'){
+                        DELETEHandler(todoFile, index, (statusCode, response)=>{
+                            res.setHeader('content-type','text/plain; charset="utf-8"');
+                            res.writeHeader(statusCode)
+                            res.end(response);
+                        });                    
+                    }else{ //invalid path
+                        res.setHeader('content-type','text/plain; charset="utf-8"');
+                        res.writeHeader(400)
+                        res.end('BAD REQUEST');                    }
+            break;
+        case 'PUT':if (path === 'shop'){
+                        PUTHandler(shopFile, index, query,(statusCode, response)=>{
+                            res.setHeader('content-type','text/plain; charset="utf-8"');
+                            res.writeHeader(statusCode)
+                            res.end(response);
+                        });
+                    }else if (path === 'todo'){
+                        PUTHandler(todoFile, index, query,(statusCode, response)=>{
+                            res.setHeader('content-type','text/plain; charset="utf-8"');
+                            res.writeHeader(statusCode)
+                            res.end(response);
+                        });                    }else{ //invalid path
+                        res.setHeader('content-type','text/plain; charset="utf-8"');
+                        res.writeHeader(400)
+                        res.end('BAD REQUEST');
+                    }
+            break;
+        default:
+            res.setHeader('content-type','text/plain; charset="utf-8"');
+            res.writeHeader(400)
+            res.end('BAD REQUEST');
+    }
+}
+
+
+const server = http.createServer(requestHandler);
+server.listen(3032,()=>{
+    console.log('Server is listenning on port 3032');
+});
+
+
+
+//Routing logic
+// switch(method){
+//     case 'POST':if (path === 'shop'){
+//                     res.end (`In ${method} in the ${path} path`);
+//                 }else if (path === 'todo'){
+//                     res.end (`In ${method} in the ${path} path`);                                     
+//                 }else{ //invalid path
+//                     res.end (`In ${method} in an invalid path`);
+//                 }
+//         break;
+//     case 'GET':if (path === 'shop'){
+//                     res.end (`In ${method} in the ${path} path`);                                                                
+//                 }else if (path === 'todo'){
+//                     res.end (`In ${method} in the ${path} path`);        
+//                 }else{ //invalid path
+//                     res.end (`In ${method} in an invalid path`);
+//                 }
+//         break;
+//     case 'DELETE':if (path === 'shop'){
+//                         res.end (`In ${method} in the ${path} path`);
+//                 }else if (path === 'todo'){
+//                     res.end (`In ${method} in the ${path} path`);              
+//                 }else{ //invalid path
+//                     res.end (`In ${method} in an invalid path`);
+//                 }
+//         break;
+//     case 'PUT':if (path === 'shop'){
+//                     res.end (`In ${method} in the ${path} path`);
+//                 }else if (path === 'todo'){
+//                     res.end (`In ${method} in the ${path} path`);
+//                 }else{ //invalid path
+//                     res.end (`In ${method} in an invalid path`);
+//                 }
+//         break;
+//     default: res.end (`Invalid method`);
+        
+// }

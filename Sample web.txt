@@ -1,0 +1,109 @@
+Sample web
+//build a simple web app to register children in private swimming classes
+//Activity 2 - Create a simple HTTP server that routes the request for POST and GET 
+//methods only
+
+//import the mysql2 module
+const mysql = require ('mysql2');
+const http = require('http');
+const {URL} = require('url');
+const child = require('./lib/child');
+const grp = require('./lib/grp');
+const register = require('./lib/register');
+
+
+// initialize the connection object
+const db= mysql.createConnection({
+    host : "localhost",
+    user : "root",
+    password: "adminPass",
+    multipleStatements: true
+    });
+
+    //Check the status of the connection
+db.connect((err)=>{
+    if (err) throw err;
+    console.log("Connected!!");
+});
+
+let sql = "CREATE DATABASE IF NOT EXISTS SWIMDB";
+db.query(sql, (err)=>{
+    if (err) throw err;
+    console.log("Database Created");
+});
+
+sql = "CREATE TABLE IF NOT EXISTS SWIMDB.CHILD ("
++" childID INTEGER PRIMARY KEY AUTO_INCREMENT," 
++ "childName VARCHAR(45) NOT NULL,"
++ "birthDate DATE NOT NULL );"
++ "CREATE TABLE IF NOT EXISTS SWIMDB.GRP ("
++" grpNum INTEGER PRIMARY KEY AUTO_INCREMENT," 
++ "grpLevel ENUM ('Beginner', 'Intermediate', 'Advanced') NOT NULL,"
++ "enrollment INTEGER NOT NULL, "
++ "startDate DATE NOT NULL); "
++ "CREATE TABLE IF NOT EXISTS SWIMDB.REGISTER ("
++" childID INTEGER ," 
++ "grpNum INTEGER,"
++ "PRIMARY KEY (childID,grpNum),"
++ "CONSTRAINT FOREIGN KEY (childID) REFERENCES SWIMDB.CHILD (childID) ON UPDATE CASCADE ON DELETE CASCADE, "
++ "CONSTRAINT FOREIGN KEY (grpNum) REFERENCES SWIMDB.GRP (grpNum) ON UPDATE CASCADE ON DELETE CASCADE )";
+
+db.query(sql, (err)=>{
+if (err) throw err;
+console.log("All tables Created");
+});
+
+const requestHandler = (req, res)=>{
+    const baseURL = 'http://' + req.headers.host + '/';
+    const {pathname, searchParams} = new URL(req.url, baseURL);
+    let enteris = searchParams.entries();
+    let query = Object.fromEntries(enteris);
+
+    const method =  req.method.toUpperCase();
+
+    switch(method){
+        case 'POST':
+            if (pathname === '/child' || pathname === '/child/'){
+                child.addChild(db, query, (statusCode, resStr, resMsg)=>{
+                    res.writeHead(statusCode, resStr, {'content-type' : 'text/plain'});
+                    res.end(resMsg);
+                });
+            }else if (pathname === '/grp' || pathname === '/grp/'){
+                grp.addGroup(db, query, (statusCode, resStr, resMsg)=>{
+                    res.writeHead(statusCode, resStr, {'content-type' : 'text/plain'});
+                    res.end(resMsg);
+                });
+            }else if (pathname === '/register' || pathname === '/register/') {
+                register.addRegister(db, query, (statusCode, resStr, resMsg)=>{
+                    res.writeHead(statusCode, resStr, {'content-type' : 'text/plain'});
+                    res.end(resMsg);
+                });    
+            }else{
+                res.setHeader('content-type','text/plain; charset="utf-8"');
+                res.writeHeader(400)
+                res.end('BAD REQUEST');
+
+            }
+            break;
+        case 'GET':
+            if (pathname === '/child/list' || pathname === '/child/list/'){
+                child.childList(db, query, (statusCode, resStr, resMsg)=>{
+                    res.writeHead(statusCode, resStr, {'content-type' : 'text/plain'});
+                    res.end(resMsg);
+                });
+            }else if (pathname === '/group/count' || pathname === '/group/count/'){
+                grp.getGroupCount(db,query,(statusCode, resStr, resMsg)=>{
+                    res.writeHead(statusCode, resStr, {'content-type' : 'text/plain'});
+                    res.end(resMsg);
+                });
+            }else{
+
+            }
+            break;
+    }
+}
+const server = http.createServer(requestHandler);
+
+server.listen(3030, ()=>{
+    console.log('Server is listening on port 3030');
+})
